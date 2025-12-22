@@ -1,0 +1,187 @@
+direction: down
+
+title: |md
+  # Arc Flash Hazard Analysis Process
+  IEEE 1584-2018 Workflow
+| {near: top-center}
+
+phase1: PHASE 1: Data Collection {
+  shape: rectangle
+  style.fill: "#e8f5e9"
+  style.font-size: 18
+}
+
+step1: Step 1: Collect System &\nInstallation Data {
+  shape: rectangle
+}
+step1.items: |md
+  - Single-line diagrams
+  - Equipment ratings
+  - Conductor data
+  - Protective device settings
+  - Instrument transformer data
+|
+
+step2: Step 2: Determine System\nModes of Operation {
+  shape: rectangle
+}
+step2.items: |md
+  - Maximum fault current
+  - Minimum fault current
+  - Generator configurations
+  - Tie breaker positions
+|
+
+step3: Step 3: Calculate Bolted\nFault Currents {
+  shape: rectangle
+}
+step3.items: |md
+  - Short-circuit study
+  - Multiple source effects
+  - Motor contributions
+  - Dynamic simulations
+|
+
+phase2: PHASE 2: Equipment Analysis {
+  shape: rectangle
+  style.fill: "#fff3e0"
+  style.font-size: 18
+}
+
+step4: Step 4: Determine Gap &\nEnclosure Size {
+  shape: rectangle
+}
+step4.items: |md
+  - Use Table 8 for typical gaps
+  - Measure actual enclosures
+  - Classify enclosure type
+  - Determine opening area
+|
+
+step5: Step 5: Determine Electrode\nConfiguration {
+  shape: rectangle
+}
+step5.items: |md
+  - VCB: Vertical in box
+  - VCBB: Vertical with barrier
+  - HCB: Horizontal in box
+  - VOA: Vertical open air
+  - HOA: Horizontal open air
+|
+
+step6: Step 6: Determine Working\nDistances {
+  shape: rectangle
+}
+step6.items: |md
+  - Use Table 10 for typical
+  - Task-specific distances
+  - Minimum 305mm (12 in)
+|
+
+phase3: PHASE 3: Calculations {
+  shape: rectangle
+  style.fill: "#e3f2fd"
+  style.font-size: 18
+}
+
+step7: Step 7: Calculate\nArcing Current {
+  shape: rectangle
+}
+step7.items: |md
+  - Apply Equation 1
+  - Consider voltage level
+  - Apply variation factor
+|
+
+step8: Step 8: Determine\nArc Duration {
+  shape: rectangle
+}
+step8.items: |md
+  - Use TCC curves
+  - Fuse clearing time
+  - CB + relay time
+  - 2 second maximum
+|
+
+step9: Step 9: Calculate\nIncident Energy {
+  shape: rectangle
+}
+step9.items: |md
+  - Apply Equations 3-6
+  - Include CF correction
+  - Calculate for both Iarc values
+  - Consider motor contributions
+|
+
+step10: Step 10: Determine\nArc-Flash Boundary {
+  shape: rectangle
+}
+step10.items: |md
+  - Apply Equations 7-10
+  - 5.0 J/cm² threshold
+  - Use maximum value
+|
+
+phase4: PHASE 4: Documentation {
+  shape: rectangle
+  style.fill: "#f3e5f5"
+  style.font-size: 18
+}
+
+document: Document Results {
+  shape: rectangle
+}
+document.items: |md
+  - Equipment labels
+  - Incident energy levels
+  - Arc-flash boundaries
+  - PPE requirements
+  - Study assumptions
+|
+
+validate: Validate & Review {
+  shape: rectangle
+}
+validate.items: |md
+  - Check model ranges
+  - Verify protective devices
+  - Review assumptions
+  - Quality control
+|
+
+complete: Analysis Complete {
+  shape: oval
+  style.fill: "#c8e6c9"
+}
+
+# Connections
+phase1 -> step1
+step1 -> step2
+step2 -> step3
+
+step3 -> phase2
+phase2 -> step4
+step4 -> step5
+step5 -> step6
+
+step6 -> phase3
+phase3 -> step7
+step7 -> step8
+step8 -> step9
+step9 -> step10
+
+step10 -> phase4
+phase4 -> document
+document -> validate
+validate -> complete
+
+# Side notes
+notes: Critical Considerations {
+  shape: rectangle
+  style.fill: "#ffebee"
+  near: top-right
+}
+notes.1: "⚠ Model valid 208V-15kV"
+notes.2: "⚠ Three-phase AC only"
+notes.3: "⚠ Multiple calculations needed"
+notes.4: "⚠ Select maximum results"

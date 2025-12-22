@@ -1,0 +1,153 @@
+direction: right
+
+title: |md
+  # Electrode Configuration Selection
+  Determining the appropriate test configuration
+| {near: top-center}
+
+config_start: Equipment to Analyze {
+  shape: oval
+  style.fill: "#e8f5e9"
+}
+
+bus_orientation: Bus/Conductor\nOrientation? {
+  shape: diamond
+  style.fill: "#e3f2fd"
+}
+
+# Vertical Path
+vertical: Vertical Conductors {
+  shape: rectangle
+  style.fill: "#f3e5f5"
+}
+
+v_enclosure: Enclosed? {
+  shape: diamond
+}
+
+v_open: VOA\nVertical Open Air {
+  shape: rectangle
+  style.fill: "#ffeb3b"
+}
+v_open.desc: |md
+  - Switchracks
+  - Exposed bus
+  - Open installations
+  - Lowest incident energy
+|
+
+v_barrier: Barrier/Busbar\nTermination? {
+  shape: diamond
+}
+
+vcbb: VCBB\nVertical w/ Barrier {
+  shape: rectangle
+  style.fill: "#ff9800"
+}
+vcbb.desc: |md
+  - MCC buckets
+  - Switchgear drawouts
+  - Panel breakers
+  - Terminated bus
+|
+
+vcb: VCB\nVertical in Box {
+  shape: rectangle
+  style.fill: "#f44336"
+}
+vcb.desc: |md
+  - Switchgear bus
+  - MCC main bus
+  - Open-tipped electrodes
+  - Highest vertical energy
+|
+
+# Horizontal Path
+horizontal: Horizontal Conductors {
+  shape: rectangle
+  style.fill: "#e1f5fe"
+}
+
+h_enclosure: Enclosed? {
+  shape: diamond
+}
+
+hoa: HOA\nHorizontal Open Air {
+  shape: rectangle
+  style.fill: "#ff5722"
+}
+hoa.desc: |md
+  - Cable terminations
+  - Open bus work
+  - Plasma directed at worker
+  - HIGH incident energy
+|
+
+hcb: HCB\nHorizontal in Box {
+  shape: rectangle
+  style.fill: "#d32f2f"
+}
+hcb.desc: |md
+  - Some switchgear designs
+  - Horizontal bus runs
+  - HIGHEST incident energy
+  - Plasma focused forward
+|
+
+# Output
+config_selected: Configuration Selected\nProceed to Calculation {
+  shape: rectangle
+  style.fill: "#c8e6c9"
+}
+
+# Connections
+config_start -> bus_orientation
+
+bus_orientation -> vertical: "Vertical"
+bus_orientation -> horizontal: "Horizontal"
+
+vertical -> v_enclosure
+v_enclosure -> v_open: "No (Open Air)"
+v_enclosure -> v_barrier: "Yes (Enclosed)"
+
+v_barrier -> vcbb: "Yes"
+v_barrier -> vcb: "No"
+
+horizontal -> h_enclosure
+h_enclosure -> hoa: "No (Open Air)"
+h_enclosure -> hcb: "Yes (Enclosed)"
+
+v_open -> config_selected
+vcbb -> config_selected
+vcb -> config_selected
+hoa -> config_selected
+hcb -> config_selected
+
+# Reference images
+ref: Configuration Reference {
+  shape: rectangle
+  style.fill: "#fafafa"
+  near: bottom-left
+}
+ref.note: |md
+  See IEEE 1584 Figures:
+  - G.1 (VCB)
+  - G.2 (VCBB)
+  - G.3 (HCB)
+  - G.4 (VOA)
+  - G.5 (HOA)
+  
+  And Table 9 for equipment
+  correlation examples
+|
+
+energy_ranking: Typical Incident Energy\nRanking (Highest to Lowest) {
+  shape: rectangle
+  style.fill: "#ffebee"
+  near: bottom-right
+}
+energy_ranking.1: "1. HCB (Horizontal in Box)"
+energy_ranking.2: "2. HOA (Horizontal Open)"
+energy_ranking.3: "3. VCB (Vertical in Box)"
+energy_ranking.4: "4. VCBB (Vertical w/ Barrier)"
+energy_ranking.5: "5. VOA (Vertical Open)"

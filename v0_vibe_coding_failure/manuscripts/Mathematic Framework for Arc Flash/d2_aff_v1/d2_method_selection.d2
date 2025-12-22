@@ -1,0 +1,126 @@
+# Arc Flash Method Selection Decision Tree
+# D2 Diagram - Helps practitioners select appropriate calculation method
+
+direction: down
+
+# Start
+start: "Arc Flash\nHazard Assessment" {
+  shape: oval
+  style.fill: "#1565C0"
+  style.stroke: "#0D47A1"
+  style.font-color: "#FFFFFF"
+}
+
+# First decision - AC or DC
+ac_dc: "AC or DC\nSystem?" {
+  shape: diamond
+  style.fill: "#FFF8E1"
+  style.stroke: "#F57F17"
+}
+
+# DC Branch
+dc_voltage: "DC Voltage\nLevel?" {
+  shape: diamond
+  style.fill: "#FFF8E1"
+  style.stroke: "#F57F17"
+}
+
+dc_low: "Low Voltage DC (<100V)\nLimited arc flash hazard\nEngineering judgment" {
+  shape: rectangle
+  style.fill: "#E8F5E9"
+  style.stroke: "#2E7D32"
+  style.border-radius: 8
+}
+
+dc_method: "DC Arc Flash Methods\n- Stokes-Oppenlander\n- Paukert\n- NFPA 70E Annex D.5\n- DGUV-I 203-077" {
+  shape: rectangle
+  style.fill: "#E8F5E9"
+  style.stroke: "#2E7D32"
+  style.border-radius: 8
+}
+
+# AC Branch
+single_phase: "Single-Phase\nor Three-Phase?" {
+  shape: diamond
+  style.fill: "#FFF8E1"
+  style.stroke: "#F57F17"
+}
+
+single_method: "Single-Phase Systems\nUse IEEE 1584 with\n3-phase fault current\n(Conservative results)" {
+  shape: rectangle
+  style.fill: "#E8F5E9"
+  style.stroke: "#2E7D32"
+  style.border-radius: 8
+}
+
+ac_voltage: "AC System\nVoltage?" {
+  shape: diamond
+  style.fill: "#FFF8E1"
+  style.stroke: "#F57F17"
+}
+
+# Low voltage
+lv_method: "IEEE 1584-2018\n208V - 600V\nAll 5 electrode configs" {
+  shape: rectangle
+  style.fill: "#E8F5E9"
+  style.stroke: "#2E7D32"
+  style.border-radius: 8
+}
+
+# Medium voltage  
+mv_method: "IEEE 1584-2018\n601V - 15kV\nInterpolation method" {
+  shape: rectangle
+  style.fill: "#E8F5E9"
+  style.stroke: "#2E7D32"
+  style.border-radius: 8
+}
+
+# High voltage
+hv_decision: "Open Air or\nEnclosed?" {
+  shape: diamond
+  style.fill: "#FFF8E1"
+  style.stroke: "#F57F17"
+}
+
+hv_open: "HV Open Air\n- EPRI Method\n- Terzija-Koglin\n- NESC Tables 410" {
+  shape: rectangle
+  style.fill: "#E8F5E9"
+  style.stroke: "#2E7D32"
+  style.border-radius: 8
+}
+
+hv_enclosed: "HV Enclosed\n- EPRI with multipliers\n- Terzija with box factors\n- Engineering judgment" {
+  shape: rectangle
+  style.fill: "#E8F5E9"
+  style.stroke: "#2E7D32"
+  style.border-radius: 8
+}
+
+lee_warning: "WARNING\nDo NOT use Lee Method\nfor systems >15kV\nResults unrealistic" {
+  shape: rectangle
+  style.fill: "#FFEBEE"
+  style.stroke: "#C62828"
+  style.border-radius: 4
+}
+
+# Connections
+start -> ac_dc
+
+ac_dc -> dc_voltage: DC
+ac_dc -> single_phase: AC
+
+single_phase -> ac_voltage: 3-Phase
+single_phase -> single_method: 1-Phase
+
+dc_voltage -> dc_low: "<100V"
+dc_voltage -> dc_method: ">=100V"
+
+ac_voltage -> lv_method: "208-600V"
+ac_voltage -> mv_method: "601V-15kV"
+ac_voltage -> hv_decision: ">15kV"
+
+hv_decision -> hv_open: "Open Air"
+hv_decision -> hv_enclosed: Enclosed
+
+hv_open -> lee_warning
+hv_enclosed -> lee_warning

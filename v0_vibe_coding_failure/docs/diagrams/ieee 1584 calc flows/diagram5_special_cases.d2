@@ -1,0 +1,190 @@
+direction: down
+
+title: |md
+  # Special Calculation Methods
+  Current-Limiting Fuses & Low-Voltage Circuit Breakers
+| {near: top-center}
+
+special_start: Protection Device\nType? {
+  shape: diamond
+  style.fill: "#e8f5e9"
+}
+
+# Fuse Path
+fuse_path: Current-Limiting Fuses {
+  shape: rectangle
+  style.fill: "#fff3e0"
+}
+
+fuse_check: Fuse in\nCurrent-Limiting\nRange? {
+  shape: diamond
+}
+
+fuse_class: Fuse Class\n& Rating? {
+  shape: rectangle
+}
+fuse_class.supported: |md
+  Class L: 800A-2000A
+  Class RK1: 100A-600A
+  
+  @ 600V only
+  VCB configuration
+  457mm (18") distance
+|
+
+fuse_annex_h: Use Annex H\nSpecial Fuse Model {
+  shape: rectangle
+  style.fill: "#c8e6c9"
+}
+fuse_annex_h.formula: |md
+  E = 4.184 × (K1×Ibf² + K2×Ibf + K3)
+  
+  See Table H.9 for K1, K2, K3
+  constants by fuse type
+|
+
+fuse_result: Fuse-Limited\nIncident Energy {
+  shape: rectangle
+  style.fill: "#a5d6a7"
+}
+fuse_result.note: "Typically much lower\nthan standard method"
+
+# Circuit Breaker Path
+cb_path: Low-Voltage\nCircuit Breakers {
+  shape: rectangle
+  style.fill: "#e3f2fd"
+}
+
+cb_check: Iarc in\nInstantaneous\nTrip Range? {
+  shape: diamond
+}
+
+cb_type: Circuit Breaker\nType & Rating? {
+  shape: rectangle
+}
+cb_type.supported: |md
+  MCCB: 100A-6000A
+  ICCB: 800A-6000A
+  LVPCB: 800A-6300A
+  
+  @ 480V or 575-690V
+  VCB configuration only
+|
+
+cb_annex_i: Use Annex I\nSpecial CB Model {
+  shape: rectangle
+  style.fill: "#c8e6c9"
+}
+cb_annex_i.formula: |md
+  E = M × Ibf + N
+  
+  See Table I.1 for M, N
+  constants by CB type & rating
+  
+  Valid for: I₁ < Ibf < I₂
+|
+
+find_i1: Calculate I₁\n(Min Inst Trip) {
+  shape: rectangle
+}
+find_i1.formula: |md
+  From TCC: It = inst trip current
+  
+  log(I₁) = 0.0281 + 1.09×log(1.3×It)  [600V]
+  log(I₁) = 0.0407 + 1.17×log(1.3×It)  [480V]
+|
+
+cb_result: CB-Limited\nIncident Energy {
+  shape: rectangle
+  style.fill: "#90caf9"
+}
+cb_result.note: "Simplified calculation\nwithout TCC curves"
+
+# Standard Method Path
+standard_method: Use Standard\nIEEE 1584-2018 Method {
+  shape: rectangle
+  style.fill: "#ffccbc"
+}
+standard_method.note: |md
+  Apply full calculation:
+  - Equations 1-10
+  - Actual arc duration from TCC
+  - All configurations supported
+|
+
+# Validation
+validate_special: Validate Results {
+  shape: rectangle
+  style.fill: "#fff9c4"
+}
+validate_special.checks: |md
+  ✓ Within model range?
+  ✓ Configuration matches?
+  ✓ Voltage matches?
+  ✓ Working distance matches?
+  ✓ Results reasonable?
+|
+
+output_special: Output with\nMethod Documentation {
+  shape: rectangle
+  style.fill: "#c8e6c9"
+}
+
+special_end: Complete {
+  shape: oval
+  style.fill: "#a5d6a7"
+}
+
+# Connections
+special_start -> fuse_path: "Fuse"
+special_start -> cb_path: "Circuit Breaker"
+special_start -> standard_method: "Other"
+
+# Fuse flow
+fuse_path -> fuse_check
+fuse_check -> fuse_class: "Yes"
+fuse_check -> standard_method: "No"
+fuse_class -> fuse_annex_h
+fuse_annex_h -> fuse_result
+fuse_result -> validate_special
+
+# CB flow
+cb_path -> cb_check
+cb_check -> cb_type: "Yes"
+cb_check -> standard_method: "No"
+cb_type -> find_i1
+find_i1 -> cb_annex_i
+cb_annex_i -> cb_result
+cb_result -> validate_special
+
+# Common flow
+standard_method -> validate_special
+validate_special -> output_special
+output_special -> special_end
+
+# Warning boxes
+fuse_warning: ⚠ Fuse Model Limitations {
+  shape: rectangle
+  style.fill: "#ffebee"
+  near: top-left
+}
+fuse_warning.text: |md
+  - One manufacturer tested
+  - 600V only
+  - VCB configuration only
+  - 457mm (18") distance only
+  - Consult manufacturer
+|
+
+cb_warning: ⚠ CB Model Limitations {
+  shape: rectangle
+  style.fill: "#ffebee"
+  near: top-right
+}
+cb_warning.text: |md
+  - Instantaneous range only
+  - VCB configuration only
+  - 460mm (18") distance only
+  - No TCC curves needed
+  - Use full method if available
+|

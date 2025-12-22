@@ -1,0 +1,190 @@
+direction: down
+
+title: |md
+  # IEEE 1584-2018 Arc Flash Model Application
+  Flow chart for determining incident energy and arc-flash boundary
+| {near: top-center}
+
+start: Start {
+  shape: oval
+  style.fill: "#e8f5e9"
+}
+
+input: Collect Input Data {
+  shape: rectangle
+  style.fill: "#fff3e0"
+}
+input.1: "- System Voltage (Voc)"
+input.2: "- Bolted Fault Current (Ibf)"
+input.3: "- Gap Between Conductors (G)"
+input.4: "- Working Distance (D)"
+input.5: "- Enclosure Dimensions"
+input.6: "- Electrode Configuration"
+
+voltage_check: Voltage Range? {
+  shape: diamond
+  style.fill: "#e3f2fd"
+}
+
+# Low Voltage Path (≤600V)
+lv_path: Low Voltage Path\n(208V ≤ Voc ≤ 600V) {
+  shape: rectangle
+  style.fill: "#f3e5f5"
+}
+
+lv_iarc: Calculate Iarc @ 600V\n(Equation 1) {
+  shape: rectangle
+}
+
+lv_final_iarc: Calculate Final Iarc\n(Equation 25) {
+  shape: rectangle
+}
+
+lv_varcf: Apply Arc Current\nVariation (Equation 2) {
+  shape: rectangle
+}
+
+lv_iarc_min: Calculate Iarc_min {
+  shape: rectangle
+}
+
+# Medium Voltage Path (>600V)
+mv_path: Medium Voltage Path\n(600V < Voc ≤ 15kV) {
+  shape: rectangle
+  style.fill: "#e1f5fe"
+}
+
+mv_iarc: Calculate Iarc at\n3 Voltage Points {
+  shape: rectangle
+}
+mv_iarc.1: "600V (Eq 1)"
+mv_iarc.2: "2700V (Eq 1)"
+mv_iarc.3: "14300V (Eq 1)"
+
+mv_interpolate: Interpolate Iarc\n(Equations 16-18) {
+  shape: rectangle
+}
+
+mv_varcf: Apply Arc Current\nVariation (Equation 2) {
+  shape: rectangle
+}
+
+mv_iarc_min: Calculate Iarc_min {
+  shape: rectangle
+}
+
+# Common Path
+arc_duration: Determine Arc Duration {
+  shape: rectangle
+  style.fill: "#fff9c4"
+}
+arc_duration.note: "Use protective device\ntime-current curves"
+
+enclosure_cf: Calculate Enclosure\nSize Correction Factor\n(Equations 11-15) {
+  shape: rectangle
+}
+
+# Energy Calculation Split
+energy_calc: Calculate Incident Energy {
+  shape: rectangle
+  style.fill: "#ffccbc"
+}
+
+lv_energy: LV: Use Equation 6 {
+  shape: rectangle
+}
+
+mv_energy: MV: Use Equations 3-5\nwith Interpolation (19-21) {
+  shape: rectangle
+}
+
+# AFB Calculation Split
+afb_calc: Calculate Arc-Flash\nBoundary (AFB) {
+  shape: rectangle
+  style.fill: "#d7ccc8"
+}
+
+lv_afb: LV: Use Equation 10 {
+  shape: rectangle
+}
+
+mv_afb: MV: Use Equations 7-9\nwith Interpolation (22-24) {
+  shape: rectangle
+}
+
+# Final Comparison
+compare: Compare Results\nfrom Iarc and Iarc_min {
+  shape: diamond
+  style.fill: "#b2dfdb"
+}
+
+select_max: Select Maximum\nIncident Energy & AFB {
+  shape: rectangle
+  style.fill: "#c8e6c9"
+}
+
+output: Output Results {
+  shape: rectangle
+  style.fill: "#fff3e0"
+}
+output.1: "- Final Iarc"
+output.2: "- Incident Energy (J/cm²)"
+output.3: "- Arc-Flash Boundary (mm)"
+output.4: "- Arc Duration (ms)"
+
+end: End {
+  shape: oval
+  style.fill: "#ffcdd2"
+}
+
+# Connections
+start -> input
+input -> voltage_check
+
+voltage_check -> lv_path: "≤600V"
+voltage_check -> mv_path: ">600V"
+
+# LV Flow
+lv_path -> lv_iarc
+lv_iarc -> lv_final_iarc
+lv_final_iarc -> lv_varcf
+lv_varcf -> lv_iarc_min
+lv_iarc_min -> arc_duration
+
+# MV Flow
+mv_path -> mv_iarc
+mv_iarc -> mv_interpolate
+mv_interpolate -> mv_varcf
+mv_varcf -> mv_iarc_min
+mv_iarc_min -> arc_duration
+
+# Common Flow
+arc_duration -> enclosure_cf
+enclosure_cf -> energy_calc
+
+energy_calc -> lv_energy: "LV"
+energy_calc -> mv_energy: "MV"
+
+lv_energy -> afb_calc
+mv_energy -> afb_calc
+
+afb_calc -> lv_afb: "LV"
+afb_calc -> mv_afb: "MV"
+
+lv_afb -> compare
+mv_afb -> compare
+
+compare -> select_max: "Both\nCalculations\nComplete"
+select_max -> output
+output -> end
+
+# Legend
+legend: Legend {
+  shape: rectangle
+  style.fill: "#fafafa"
+  near: bottom-right
+}
+legend.1: "Iarc = Arcing Current"
+legend.2: "AFB = Arc-Flash Boundary"
+legend.3: "LV = Low Voltage"
+legend.4: "MV = Medium Voltage"
