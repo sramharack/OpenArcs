@@ -1,0 +1,13 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Test artifacts
+.pytest_cache/
+
+# Local experiments / scratch work
+misc/
+
+# Virtual environments
+.venv/
+venv/
