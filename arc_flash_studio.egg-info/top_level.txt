@@ -1,0 +1,4 @@
+arc_flash_studio
+misc
+tests
+v0_vibe_coding_failure

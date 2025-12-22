@@ -58,7 +58,7 @@ class TestUtilitySourceImpedance:
             X_ohms = 0.1996 × 1.9044 = 0.3801 Ω
             Z_ohms is also referred to as Z_TH explicitly in some works.
         """
-        from components.utility_source import UtilitySource
+        from arc_flash_studio.components.utility_source import UtilitySource
         
         source = UtilitySource(
             id="UTIL-001",
@@ -92,7 +92,7 @@ class TestUtilitySourceImpedance:
             R = 0.6667 / √(1 + 100) = 0.6667 / 10.05 = 0.06633 pu
             X = 0.06633 × 10 = 0.6633 pu
         """
-        from components.utility_source import UtilitySource
+        from arc_flash_studio.components.utility_source import UtilitySource
         
         source = UtilitySource(
             id="UTIL-002",
@@ -120,7 +120,7 @@ class TestUtilitySourceImpedance:
             R = 0.1 / √(1 + 400) = 0.1 / 20.025 = 0.004994 pu
             X = 0.004994 × 20 = 0.09988 pu
         """
-        from components.utility_source import UtilitySource
+        from arc_flash_studio.components.utility_source import UtilitySource
         
         source = UtilitySource(
             id="UTIL-003",
@@ -152,7 +152,7 @@ class TestUtilitySourceImpedance:
             Z_base = 0.48² / 100 = 0.002304 Ω
             Z_ohms = 2.0 × 0.002304 = 0.004608 Ω
         """
-        from components.utility_source import UtilitySource
+        from arc_flash_studio.components.utility_source import UtilitySource
         
         source = UtilitySource(
             id="UTIL-004",
@@ -172,7 +172,7 @@ class TestUtilitySourceValidation:
 
     def test_negative_sc_mva_raises_error(self):
         """Short-circuit MVA must be positive."""
-        from components.utility_source import UtilitySource
+        from arc_flash_studio.components.utility_source import UtilitySource
         
         with pytest.raises(ValueError, match="short_circuit_mva"):
             UtilitySource(
@@ -185,7 +185,7 @@ class TestUtilitySourceValidation:
 
     def test_zero_sc_mva_raises_error(self):
         """Short-circuit MVA cannot be zero (infinite impedance)."""
-        from components.utility_source import UtilitySource
+        from arc_flash_studio.components.utility_source import UtilitySource
         
         with pytest.raises(ValueError, match="short_circuit_mva"):
             UtilitySource(
@@ -198,7 +198,7 @@ class TestUtilitySourceValidation:
 
     def test_negative_xr_ratio_raises_error(self):
         """X/R ratio must be positive."""
-        from components.utility_source import UtilitySource
+        from arc_flash_studio.components.utility_source import UtilitySource
         
         with pytest.raises(ValueError, match="x_r_ratio"):
             UtilitySource(
@@ -211,7 +211,7 @@ class TestUtilitySourceValidation:
 
     def test_zero_xr_ratio_raises_error(self):
         """X/R ratio cannot be zero (pure resistance is unrealistic for utility)."""
-        from components.utility_source import UtilitySource
+        from arc_flash_studio.components.utility_source import UtilitySource
         
         with pytest.raises(ValueError, match="x_r_ratio"):
             UtilitySource(
@@ -224,7 +224,7 @@ class TestUtilitySourceValidation:
 
     def test_negative_voltage_raises_error(self):
         """Voltage must be positive."""
-        from components.utility_source import UtilitySource
+        from arc_flash_studio.components.utility_source import UtilitySource
         
         with pytest.raises(ValueError, match="voltage"):
             UtilitySource(
@@ -248,7 +248,7 @@ class TestUtilitySourceProperties:
         For 500 MVA at 13.8 kV:
             I_fault = 500 / (1.732 × 13.8) = 500 / 23.90 = 20.92 kA
         """
-        from components.utility_source import UtilitySource
+        from arc_flash_studio.components.utility_source import UtilitySource
         
         source = UtilitySource(
             id="UTIL-001",
@@ -262,7 +262,7 @@ class TestUtilitySourceProperties:
 
     def test_string_representation(self):
         """Test that __str__ provides useful information."""
-        from components.utility_source import UtilitySource
+        from arc_flash_studio.components.utility_source import UtilitySource
         
         source = UtilitySource(
             id="UTIL-001",
@@ -287,7 +287,7 @@ class TestUtilitySourceSystemBase:
         Using 10 MVA base instead of 100 MVA:
             Z_pu = 1.0² / (500/10) = 0.02 pu
         """
-        from components.utility_source import UtilitySource
+        from arc_flash_studio.components.utility_source import UtilitySource
         
         source = UtilitySource(
             id="UTIL-001",
@@ -308,7 +308,7 @@ class TestUtilitySourceSystemBase:
             Z_ratio = (4.16/13.8)² = 0.0909
             Z_4.16kV = Z_13.8kV × 0.0909
         """
-        from components.utility_source import UtilitySource
+        from arc_flash_studio.components.utility_source import UtilitySource
         
         source = UtilitySource(
             id="UTIL-001",
