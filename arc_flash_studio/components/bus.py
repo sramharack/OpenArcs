@@ -2,117 +2,53 @@
 Bus Component
 =============
 
-A bus represents a node in the electrical network - a point where
-components connect at a common voltage level.
+Generic electrical bus - a connection point in the network.
 
-In a single-line diagram, buses are the vertical bars where multiple
-feeders, transformers, and loads connect.
+Use Bus when the equipment type doesn't fit other categories
+(Switchgear, Panel, MCC, etc.) or when specifying all parameters manually.
 
-Reference:
-    - IEEE 1584-2018, Section 6.2
-    - IEC 60909-0
+References:
+    - IEEE 1584-2018, Section 6.2: Equipment classes
 
 Traceability:
-    - REQ-COMP-FUNC-1: Bus class definition
+    - REQ-COMP-FUNC-1: Bus component
 """
 
-from __future__ import annotations
-
-from enum import Enum
-from typing import Optional
-
-from pydantic import BaseModel, Field, PositiveFloat, computed_field, ConfigDict
+from arc_flash_studio.components.base import NetworkNode
+from arc_flash_studio.components.enums import EquipmentType
 
 
-class VoltageLevel(str, Enum):
-    """Voltage level classification per IEEE 1584-2018."""
-    LV = "LV"      # Low Voltage: ≤ 1000 V
-    MV = "MV"      # Medium Voltage: > 1000 V to 35 kV
-    HV = "HV"      # High Voltage: > 35 kV (outside IEEE 1584 scope)
-
-
-class Bus(BaseModel):
+class Bus(NetworkNode):
     """
-    Electrical bus - a node in the network at a specific voltage level.
+    Generic electrical bus.
     
-    A bus is where components connect. It has no impedance itself;
-    it's simply a connection point at a defined voltage.
+    A Bus is the most basic network node. It represents a point
+    where conductors connect and voltage is defined. Use this class
+    when the equipment doesn't fit into a more specific category.
+    
+    For equipment-specific defaults, use:
+        - Switchgear for LV/MV switchgear
+        - Panelboard for distribution panels
+        - MCC for motor control centers
+        - CableJunction for junction boxes
     
     Attributes:
         id: Unique identifier
         name: Human-readable name
-        voltage_nominal: Nominal voltage in kV
-        voltage_base: Base voltage for per-unit calculations (defaults to nominal)
+        voltage_kv: Nominal voltage in kilovolts
+        gap_mm: Optional explicit gap distance
+        working_distance_mm: Optional explicit working distance
+        enclosure: Optional explicit enclosure info
     
     Example:
-        >>> bus = Bus(id="BUS-001", name="Main 480V Bus", voltage_nominal=0.48)
-        >>> print(bus.voltage_level)
-        VoltageLevel.LV
+        >>> bus = Bus(id="B1", name="Main Bus", voltage_kv=0.48)
+        >>> bus.voltage_level
+        <VoltageLevel.LV: 'LV'>
+        >>> bus.get_gap_mm()  # Uses default for generic equipment
+        32.0
     """
     
-    model_config = ConfigDict(
-        frozen=False,
-        validate_assignment=True,
-        str_strip_whitespace=True,
-    )
-    
-    # Input fields
-    id: str = Field(
-        ...,
-        description="Unique identifier for the bus",
-        min_length=1,
-    )
-    
-    name: str = Field(
-        ...,
-        description="Human-readable name",
-    )
-    
-    voltage_nominal: PositiveFloat = Field(
-        ...,
-        description="Nominal voltage in kV",
-        examples=[0.208, 0.48, 4.16, 13.8],
-    )
-    
-    voltage_base: Optional[PositiveFloat] = Field(
-        default=None,
-        description="Base voltage for per-unit calculations (kV). Defaults to nominal.",
-    )
-    
-    # Optional metadata
-    description: str = Field(
-        default="",
-        description="Additional notes about the bus",
-    )
-    
-    @computed_field
     @property
-    def voltage_base_kv(self) -> float:
-        """Base voltage for per-unit calculations. Defaults to nominal if not set."""
-        return self.voltage_base if self.voltage_base is not None else self.voltage_nominal
-    
-    @computed_field
-    @property
-    def voltage_level(self) -> VoltageLevel:
-        """
-        Classify voltage level per IEEE 1584-2018.
-        
-        - LV: ≤ 1.0 kV (1000 V)
-        - MV: > 1.0 kV to 35 kV
-        - HV: > 35 kV
-        """
-        if self.voltage_nominal <= 1.0:
-            return VoltageLevel.LV
-        elif self.voltage_nominal <= 35.0:
-            return VoltageLevel.MV
-        else:
-            return VoltageLevel.HV
-    
-    @computed_field
-    @property
-    def in_ieee1584_scope(self) -> bool:
-        """Check if voltage is within IEEE 1584-2018 scope (0.208 to 15 kV)."""
-        return 0.208 <= self.voltage_nominal <= 15.0
-    
-    def __str__(self) -> str:
-        return f"Bus('{self.id}': {self.name}, {self.voltage_nominal} kV)"
+    def equipment_type(self) -> EquipmentType:
+        """Return generic equipment type."""
+        return EquipmentType.OTHER

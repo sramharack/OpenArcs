@@ -1,352 +1,332 @@
 """
-Network Module
-==============
+Arc Flash Studio Network - PandaPower Integration
+=================================================
 
-The Network class connects components into an electrical system and
-provides methods for short-circuit analysis.
+The Network class wraps PandaPower to provide:
+1. Pydantic-validated component input
+2. Convenient API for building networks
+3. Short-circuit results formatted for arc flash calculations
 
-For Phase 1, we implement a simplified radial network analysis.
-Future phases will integrate with PandaPower for complex networks.
+The actual short-circuit calculations are delegated to PandaPower,
+which implements IEC 60909 and has been validated against commercial
+software (DIgSILENT PowerFactory, PSS Sincal).
 
-Reference:
-    - IEEE 1584-2018, Section 6
-    - IEC 60909-0
+References:
+    - PandaPower: https://pandapower.readthedocs.io/
+    - IEC 60909-0: Short-circuit currents in three-phase a.c. systems
 
 Traceability:
-    - REQ-COMP-FUNC-9: Network topology
-    - REQ-COMP-FUNC-12: Short-circuit calculation
+    - REQ-COMP-FUNC-10: Network topology support
+    - REQ-COMP-FUNC-12: Short-circuit calculation via PandaPower
 """
 
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Union
-from pydantic import BaseModel, Field, computed_field, ConfigDict
+from dataclasses import dataclass
+from typing import Dict, List, Optional
 
-from arc_flash_studio.components.bus import Bus
-from arc_flash_studio.components.utility_source import UtilitySource
-from arc_flash_studio.components.transformer import Transformer
-from arc_flash_studio.components.cable import Cable
+import pandapower as pp
+import pandapower.shortcircuit as sc
 
+# Import components from the components package
+from arc_flash_studio.components import (
+    # Enums
+    VoltageLevel,
+    ElectrodeConfig,
+    EquipmentType,
+    # Node types (all become buses in PandaPower)
+    NetworkNode,
+    Bus,
+    Switchgear,
+    Panelboard,
+    MCC,
+    CableJunction,
+    OpenAir,
+    # Sources
+    UtilitySource,
+    # Branches
+    Transformer,
+    Cable,
+    # Helpers
+    EnclosureInfo,
+    create_cable,
+)
+
+
+# =============================================================================
+# Network Class - Wraps PandaPower
+# =============================================================================
 
 @dataclass
 class ShortCircuitResult:
-    """Results of a short-circuit calculation at a specific bus."""
-    
+    """Results from short-circuit calculation at a bus."""
     bus_id: str
     bus_name: str
     voltage_kv: float
+    ikss_ka: float          # Initial symmetrical short-circuit current
+    ip_ka: float            # Peak short-circuit current
+    ith_ka: float           # Thermal equivalent current
+    skss_mva: float         # Short-circuit power
     
-    # Fault current
-    i_fault_ka: float          # Three-phase fault current magnitude (kA)
-    i_fault_a: float           # Three-phase fault current (A)
-    
-    # Impedance to fault point
-    z_total_pu: float          # Total impedance in per-unit
-    r_total_pu: float          # Total resistance in per-unit
-    x_total_pu: float          # Total reactance in per-unit
-    z_total_ohms: float        # Total impedance in ohms at fault voltage
-    
-    # X/R ratio (important for asymmetry/DC offset)
-    x_r_ratio: float
-    
-    # Contributing components
-    impedance_breakdown: Dict[str, complex] = field(default_factory=dict)
-    
-    def __str__(self) -> str:
-        return (
-            f"ShortCircuitResult at '{self.bus_id}' ({self.bus_name}):\n"
-            f"  Voltage: {self.voltage_kv} kV\n"
-            f"  I_fault: {self.i_fault_ka:.2f} kA ({self.i_fault_a:.0f} A)\n"
-            f"  Z_total: {self.z_total_pu:.6f} pu ({self.z_total_ohms:.6f} Ω)\n"
-            f"  X/R ratio: {self.x_r_ratio:.2f}"
-        )
+    # For arc flash calculations
+    equipment_type: EquipmentType = EquipmentType.OTHER
+    electrode_config: ElectrodeConfig = ElectrodeConfig.VCB
+    gap_mm: float = 32.0
+    working_distance_mm: float = 455.0
+    enclosure: Optional[EnclosureInfo] = None
 
 
-class RadialNetwork:
+class Network:
     """
-    A simplified radial network for short-circuit analysis.
+    Electrical network for short-circuit and arc flash analysis.
     
-    This class models a radial (non-looped) network where power flows
-    from a single source through a series of components to load buses.
-    
-    For Phase 1, we assume:
-    - Single utility source
-    - Radial topology (no loops)
-    - Three-phase balanced faults
-    - No motor contribution (added in Phase 2)
+    This class wraps PandaPower to provide:
+    - Pydantic-validated component input
+    - Convenient API for building networks
+    - Short-circuit results formatted for arc flash calculations
     
     Example:
-        >>> network = RadialNetwork(system_base_mva=100.0)
-        >>> 
-        >>> # Add source
-        >>> network.add_utility_source(utility)
-        >>> 
-        >>> # Add buses
-        >>> network.add_bus(bus_primary)
-        >>> network.add_bus(bus_secondary)
-        >>> 
-        >>> # Add components
-        >>> network.add_transformer(transformer, from_bus="BUS-001", to_bus="BUS-002")
-        >>> network.add_cable(cable, from_bus="BUS-002", to_bus="BUS-003")
-        >>> 
-        >>> # Calculate fault
-        >>> result = network.calculate_fault_at_bus("BUS-003")
-        >>> print(f"Fault current: {result.i_fault_ka:.2f} kA")
+        >>> net = Network()
+        >>> net.add_bus(Bus(id="B1", name="Main", voltage_kv=0.48))
+        >>> net.add_utility(UtilitySource(
+        ...     id="U1", name="Grid", bus_id="B1",
+        ...     short_circuit_mva=500, x_r_ratio=15
+        ... ))
+        >>> results = net.calculate_short_circuit()
+        >>> print(results["B1"].ikss_ka)
     """
     
-    def __init__(self, system_base_mva: float = 100.0):
-        """
-        Initialize an empty radial network.
+    def __init__(self, name: str = "network", frequency_hz: float = 60.0):
+        """Create a new network."""
+        self.name = name
+        self.frequency_hz = frequency_hz
         
-        Args:
-            system_base_mva: System base MVA for per-unit calculations
-        """
-        self.system_base_mva = system_base_mva
+        # Component storage (our validated models)
+        # All node types stored in _nodes (they all become buses in PandaPower)
+        self._nodes: Dict[str, NetworkNode] = {}
+        self._utilities: Dict[str, UtilitySource] = {}
+        self._transformers: Dict[str, Transformer] = {}
+        self._cables: Dict[str, Cable] = {}
         
-        # Storage
-        self._utility_source: Optional[UtilitySource] = None
-        self._source_bus_id: Optional[str] = None
-        self._buses: Dict[str, Bus] = {}
-        self._transformers: Dict[str, dict] = {}  # id -> {component, from_bus, to_bus}
-        self._cables: Dict[str, dict] = {}        # id -> {component, from_bus, to_bus}
-        
-        # Topology tracking
-        self._connections: Dict[str, List[str]] = {}  # bus_id -> [connected_bus_ids]
+        # PandaPower network (built on demand)
+        self._pp_net: Optional[pp.pandapowerNet] = None
+        self._bus_id_map: Dict[str, int] = {}  # our ID -> pandapower index
+        self._dirty: bool = True  # Need to rebuild PP network?
     
     # -------------------------------------------------------------------------
     # Add Components
     # -------------------------------------------------------------------------
     
-    def add_bus(self, bus: Bus) -> None:
-        """Add a bus to the network."""
-        if bus.id in self._buses:
-            raise ValueError(f"Bus '{bus.id}' already exists in network")
-        self._buses[bus.id] = bus
-        self._connections[bus.id] = []
+    def add_bus(self, node: NetworkNode) -> None:
+        """
+        Add a network node (bus, switchgear, panel, etc.) to the network.
+        
+        All NetworkNode subclasses (Bus, Switchgear, Panelboard, MCC, etc.)
+        become buses in PandaPower. The equipment type affects arc flash
+        parameters but not short-circuit calculations.
+        """
+        if node.id in self._nodes:
+            raise ValueError(f"Node '{node.id}' already exists")
+        self._nodes[node.id] = node
+        self._dirty = True
     
-    def add_utility_source(self, source: UtilitySource, bus_id: str) -> None:
-        """
-        Add a utility source connected to a bus.
-        
-        Args:
-            source: The UtilitySource component
-            bus_id: ID of the bus where the source connects
-        """
-        if self._utility_source is not None:
-            raise ValueError("Network already has a utility source (radial network supports one)")
-        if bus_id not in self._buses:
-            raise ValueError(f"Bus '{bus_id}' not found. Add the bus first.")
-        
-        self._utility_source = source
-        self._source_bus_id = bus_id
+    # Convenience aliases for specific equipment types
+    add_switchgear = add_bus
+    add_panel = add_bus
+    add_mcc = add_bus
     
-    def add_transformer(self, transformer: Transformer, from_bus: str, to_bus: str) -> None:
-        """
-        Add a transformer connecting two buses.
-        
-        Args:
-            transformer: The Transformer component
-            from_bus: ID of the primary side bus
-            to_bus: ID of the secondary side bus
-        """
-        for bus_id in [from_bus, to_bus]:
-            if bus_id not in self._buses:
-                raise ValueError(f"Bus '{bus_id}' not found. Add the bus first.")
-        
-        self._transformers[transformer.id] = {
-            "component": transformer,
-            "from_bus": from_bus,
-            "to_bus": to_bus,
-        }
-        
-        # Update connections
-        self._connections[from_bus].append(to_bus)
-        self._connections[to_bus].append(from_bus)
+    def add_utility(self, utility: UtilitySource) -> None:
+        """Add a utility source (external grid)."""
+        if utility.bus_id not in self._nodes:
+            raise ValueError(f"Bus '{utility.bus_id}' not found")
+        self._utilities[utility.id] = utility
+        self._dirty = True
     
-    def add_cable(self, cable: Cable, from_bus: str, to_bus: str) -> None:
-        """
-        Add a cable connecting two buses.
+    def add_transformer(self, transformer: Transformer) -> None:
+        """Add a transformer."""
+        for bus_id in [transformer.hv_bus_id, transformer.lv_bus_id]:
+            if bus_id not in self._nodes:
+                raise ValueError(f"Bus '{bus_id}' not found")
+        self._transformers[transformer.id] = transformer
+        self._dirty = True
+    
+    def add_cable(self, cable: Cable) -> None:
+        """Add a cable (line)."""
+        for bus_id in [cable.from_bus_id, cable.to_bus_id]:
+            if bus_id not in self._nodes:
+                raise ValueError(f"Bus '{bus_id}' not found")
+        self._cables[cable.id] = cable
+        self._dirty = True
+    
+    # -------------------------------------------------------------------------
+    # Build PandaPower Network
+    # -------------------------------------------------------------------------
+    
+    def _build_pp_network(self) -> None:
+        """Convert our components to a PandaPower network."""
+        self._pp_net = pp.create_empty_network(
+            name=self.name,
+            f_hz=self.frequency_hz
+        )
+        self._bus_id_map = {}
         
-        Args:
-            cable: The Cable component
-            from_bus: ID of the source side bus
-            to_bus: ID of the load side bus
-        """
-        for bus_id in [from_bus, to_bus]:
-            if bus_id not in self._buses:
-                raise ValueError(f"Bus '{bus_id}' not found. Add the bus first.")
+        # Create buses (all node types become buses)
+        for node_id, node in self._nodes.items():
+            pp_idx = pp.create_bus(
+                self._pp_net,
+                vn_kv=node.voltage_kv,
+                name=node.name
+            )
+            self._bus_id_map[node_id] = pp_idx
         
-        self._cables[cable.id] = {
-            "component": cable,
-            "from_bus": from_bus,
-            "to_bus": to_bus,
-        }
+        # Create external grids (utilities)
+        for util in self._utilities.values():
+            pp_bus = self._bus_id_map[util.bus_id]
+            pp.create_ext_grid(
+                self._pp_net,
+                bus=pp_bus,
+                vm_pu=1.0,
+                name=util.name,
+                s_sc_max_mva=util.short_circuit_mva,
+                rx_max=1.0 / util.x_r_ratio,  # PandaPower uses R/X
+                x0x_max=1.0,
+                r0x0_max=1.0,
+            )
         
-        # Update connections
-        self._connections[from_bus].append(to_bus)
-        self._connections[to_bus].append(from_bus)
+        # Create transformers
+        for xfmr in self._transformers.values():
+            pp_hv_bus = self._bus_id_map[xfmr.hv_bus_id]
+            pp_lv_bus = self._bus_id_map[xfmr.lv_bus_id]
+            
+            pp.create_transformer_from_parameters(
+                self._pp_net,
+                hv_bus=pp_hv_bus,
+                lv_bus=pp_lv_bus,
+                name=xfmr.name,
+                sn_mva=xfmr.rated_mva,
+                vn_hv_kv=xfmr.hv_kv,
+                vn_lv_kv=xfmr.lv_kv,
+                vk_percent=xfmr.impedance_percent,
+                vkr_percent=xfmr.vkr_percent,
+                pfe_kw=0,
+                i0_percent=0,
+                vector_group=xfmr.vector_group,
+            )
+        
+        # Create lines (cables)
+        for cable in self._cables.values():
+            pp_from = self._bus_id_map[cable.from_bus_id]
+            pp_to = self._bus_id_map[cable.to_bus_id]
+            
+            pp.create_line_from_parameters(
+                self._pp_net,
+                from_bus=pp_from,
+                to_bus=pp_to,
+                length_km=cable.length_km,
+                name=cable.name,
+                r_ohm_per_km=cable.r_ohm_per_km,
+                x_ohm_per_km=cable.x_ohm_per_km,
+                c_nf_per_km=0,
+                max_i_ka=10.0,  # Placeholder
+            )
+        
+        self._dirty = False
     
     # -------------------------------------------------------------------------
     # Short-Circuit Calculation
     # -------------------------------------------------------------------------
     
-    def calculate_fault_at_bus(self, fault_bus_id: str) -> ShortCircuitResult:
+    def calculate_short_circuit(
+        self,
+        bus_ids: Optional[List[str]] = None
+    ) -> Dict[str, ShortCircuitResult]:
         """
-        Calculate three-phase bolted fault current at a bus.
-        
-        This uses the Thévenin equivalent method:
-        1. Find the path from source to fault bus
-        2. Sum impedances along the path (in per-unit)
-        3. Calculate fault current: I_fault = V / Z_total
+        Calculate short-circuit currents using PandaPower (IEC 60909).
         
         Args:
-            fault_bus_id: ID of the bus where fault occurs
+            bus_ids: List of bus IDs to calculate. If None, calculates all.
         
         Returns:
-            ShortCircuitResult with fault current and impedance data
+            Dictionary mapping bus ID to ShortCircuitResult
         """
-        # Validate
-        if fault_bus_id not in self._buses:
-            raise ValueError(f"Bus '{fault_bus_id}' not found in network")
-        if self._utility_source is None:
-            raise ValueError("No utility source defined. Add one with add_utility_source()")
+        # Rebuild PP network if needed
+        if self._dirty or self._pp_net is None:
+            self._build_pp_network()
         
-        fault_bus = self._buses[fault_bus_id]
-        
-        # Find path from source to fault
-        path = self._find_path(self._source_bus_id, fault_bus_id)
-        if path is None:
-            raise ValueError(f"No path found from source to bus '{fault_bus_id}'")
-        
-        # Accumulate impedance along path
-        z_total_pu = complex(0, 0)
-        impedance_breakdown: Dict[str, complex] = {}
-        
-        # Add utility source impedance
-        source_z = self._utility_source.get_impedance_complex()
-        z_total_pu += source_z
-        impedance_breakdown[f"Utility: {self._utility_source.id}"] = source_z
-        
-        # Walk through path and add component impedances
-        for i in range(len(path) - 1):
-            from_bus_id = path[i]
-            to_bus_id = path[i + 1]
-            
-            # Find component connecting these buses
-            component_z = self._get_component_impedance(from_bus_id, to_bus_id)
-            if component_z is not None:
-                comp_id, z_pu = component_z
-                z_total_pu += z_pu
-                impedance_breakdown[comp_id] = z_pu
-        
-        # Calculate fault current
-        # V = 1.0 pu (assuming nominal voltage)
-        # I = V / Z
-        v_pu = 1.0
-        i_fault_pu = v_pu / abs(z_total_pu)
-        
-        # Convert to actual values at fault bus voltage
-        # I_base = S_base / (sqrt(3) * V_base)
-        i_base_ka = self.system_base_mva / (math.sqrt(3) * fault_bus.voltage_nominal)
-        i_fault_ka = i_fault_pu * i_base_ka
-        i_fault_a = i_fault_ka * 1000
-        
-        # Z in ohms at fault voltage
-        z_base_ohms = (fault_bus.voltage_nominal ** 2) / self.system_base_mva
-        z_total_ohms = abs(z_total_pu) * z_base_ohms
-        
-        # X/R ratio
-        if z_total_pu.real == 0:
-            x_r_ratio = float('inf')
+        # Determine which buses to calculate
+        if bus_ids is None:
+            target_buses = list(self._nodes.keys())
         else:
-            x_r_ratio = z_total_pu.imag / z_total_pu.real
+            target_buses = bus_ids
         
-        return ShortCircuitResult(
-            bus_id=fault_bus_id,
-            bus_name=fault_bus.name,
-            voltage_kv=fault_bus.voltage_nominal,
-            i_fault_ka=i_fault_ka,
-            i_fault_a=i_fault_a,
-            z_total_pu=abs(z_total_pu),
-            r_total_pu=z_total_pu.real,
-            x_total_pu=z_total_pu.imag,
-            z_total_ohms=z_total_ohms,
-            x_r_ratio=x_r_ratio,
-            impedance_breakdown=impedance_breakdown,
-        )
-    
-    def _find_path(self, start: str, end: str) -> Optional[List[str]]:
-        """
-        Find path between two buses using BFS.
-        
-        Returns list of bus IDs from start to end, or None if no path.
-        """
-        if start == end:
-            return [start]
-        
-        visited = {start}
-        queue = [[start]]
-        
-        while queue:
-            path = queue.pop(0)
-            current = path[-1]
+        # Run short-circuit for each bus
+        results = {}
+        for bus_id in target_buses:
+            if bus_id not in self._bus_id_map:
+                raise ValueError(f"Bus '{bus_id}' not found")
             
-            for neighbor in self._connections.get(current, []):
-                if neighbor == end:
-                    return path + [neighbor]
-                if neighbor not in visited:
-                    visited.add(neighbor)
-                    queue.append(path + [neighbor])
+            pp_bus_idx = self._bus_id_map[bus_id]
+            node = self._nodes[bus_id]
+            
+            # Run IEC 60909 short-circuit calculation
+            sc.calc_sc(
+                self._pp_net,
+                bus=pp_bus_idx,
+                branch_results=False,
+                return_all_currents=False,
+            )
+            
+            # Extract results
+            res = self._pp_net.res_bus_sc.loc[pp_bus_idx]
+            
+            # Get arc flash parameters from the node
+            gap_mm = node.get_gap_mm()
+            working_distance = node.get_working_distance_mm()
+            enclosure = node.get_enclosure()
+            
+            results[bus_id] = ShortCircuitResult(
+                bus_id=bus_id,
+                bus_name=node.name,
+                voltage_kv=node.voltage_kv,
+                ikss_ka=res['ikss_ka'],
+                ip_ka=res.get('ip_ka', res['ikss_ka'] * 2.5),  # Approximate if not available
+                ith_ka=res.get('ith_ka', res['ikss_ka']),
+                skss_mva=res.get('skss_mw', res['ikss_ka'] * node.voltage_kv * math.sqrt(3)),
+                equipment_type=node.equipment_type,
+                electrode_config=enclosure.electrode_config,
+                gap_mm=gap_mm,
+                working_distance_mm=working_distance,
+                enclosure=enclosure,
+            )
         
-        return None
-    
-    def _get_component_impedance(self, from_bus: str, to_bus: str) -> Optional[tuple]:
-        """
-        Find the component connecting two buses and return its impedance.
-        
-        Returns tuple of (component_id, complex impedance in pu) or None.
-        """
-        # Check transformers
-        for xfmr_id, data in self._transformers.items():
-            if (data["from_bus"] == from_bus and data["to_bus"] == to_bus) or \
-               (data["from_bus"] == to_bus and data["to_bus"] == from_bus):
-                xfmr: Transformer = data["component"]
-                # Convert to system base
-                z_pu = complex(xfmr.r_pu, xfmr.x_pu)
-                return (f"Transformer: {xfmr_id}", z_pu)
-        
-        # Check cables
-        for cable_id, data in self._cables.items():
-            if (data["from_bus"] == from_bus and data["to_bus"] == to_bus) or \
-               (data["from_bus"] == to_bus and data["to_bus"] == from_bus):
-                cable: Cable = data["component"]
-                z_pu = complex(cable.r_pu, cable.x_pu)
-                return (f"Cable: {cable_id}", z_pu)
-        
-        return None
+        return results
     
     # -------------------------------------------------------------------------
-    # Utility Methods
+    # Convenience Methods
     # -------------------------------------------------------------------------
     
-    def get_bus(self, bus_id: str) -> Bus:
-        """Get a bus by ID."""
-        if bus_id not in self._buses:
+    def get_bus(self, bus_id: str) -> NetworkNode:
+        """Get a bus/node by ID."""
+        if bus_id not in self._nodes:
             raise KeyError(f"Bus '{bus_id}' not found")
-        return self._buses[bus_id]
+        return self._nodes[bus_id]
     
     def list_buses(self) -> List[str]:
-        """List all bus IDs in the network."""
-        return list(self._buses.keys())
+        """List all bus/node IDs."""
+        return list(self._nodes.keys())
     
-    def __str__(self) -> str:
-        lines = [
-            f"RadialNetwork (Base: {self.system_base_mva} MVA)",
-            f"  Buses: {len(self._buses)}",
-            f"  Transformers: {len(self._transformers)}",
-            f"  Cables: {len(self._cables)}",
-            f"  Source: {self._utility_source.id if self._utility_source else 'None'}",
-        ]
-        return "\n".join(lines)
+    @property
+    def pp_network(self) -> pp.pandapowerNet:
+        """Access the underlying PandaPower network (for advanced use)."""
+        if self._dirty or self._pp_net is None:
+            self._build_pp_network()
+        return self._pp_net
+    
+    def __repr__(self) -> str:
+        return (
+            f"Network('{self.name}', "
+            f"buses={len(self._nodes)}, "
+            f"transformers={len(self._transformers)}, "
+            f"cables={len(self._cables)})"
+        )

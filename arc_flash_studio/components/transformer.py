@@ -2,274 +2,156 @@
 Transformer Component
 =====================
 
-Two-winding power transformer model for short-circuit and arc flash studies.
+Two-winding power transformer.
 
-The transformer is modeled by its nameplate impedance, which determines
-how much it limits fault current flowing from primary to secondary.
+Transforms voltage between two levels. Characterized by its
+MVA rating, voltage ratio, and impedance.
 
-Reference:
-    - IEEE 1584-2018, Section 6.2
-    - IEC 60909-0, Section 6
-    - IEEE C57.12.00 (Transformer standards)
+References:
+    - IEC 60909-0: Transformer impedance for short-circuit
+    - IEEE C57.12.00: Transformer standards
 
 Traceability:
-    - REQ-COMP-FUNC-3: Transformer class definition
+    - REQ-COMP-FUNC-8: Transformer with impedance conversion
 """
 
-from __future__ import annotations
-
 import math
-from enum import Enum
-from typing import Optional
 
-from pydantic import (
-    BaseModel,
-    Field,
-    PositiveFloat,
-    computed_field,
-    field_validator,
-    ConfigDict,
-)
-
-
-class VectorGroup(str, Enum):
-    """Common transformer vector groups."""
-    Dyn11 = "Dyn11"  # Delta primary, wye secondary, 30° lag
-    Dyn1 = "Dyn1"    # Delta primary, wye secondary, 30° lead
-    Yyn0 = "Yyn0"    # Wye-wye, no phase shift
-    Dd0 = "Dd0"      # Delta-delta, no phase shift
-    Yd1 = "Yd1"      # Wye primary, delta secondary
-    Yd11 = "Yd11"    # Wye primary, delta secondary
+from pydantic import BaseModel, Field, PositiveFloat, computed_field, ConfigDict
 
 
 class Transformer(BaseModel):
     """
     Two-winding power transformer.
     
-    Models the transformer's contribution to system impedance for
-    short-circuit calculations. The key parameter is percent impedance (%Z),
-    which determines fault current limitation.
+    A Transformer connects two voltage levels and introduces
+    impedance into the network. In PandaPower, this becomes
+    a transformer element.
+    
+    Key Parameters:
+        - impedance_percent: Nameplate %Z (typically 4-8% for distribution)
+        - x_r_ratio: X/R ratio (typically 5-15 for power transformers)
+    
+    Conversion to PandaPower:
+        - impedance_percent → vk_percent
+        - vkr_percent = impedance_percent / sqrt(1 + (X/R)²)
     
     Attributes:
         id: Unique identifier
         name: Human-readable name
-        rated_power_mva: Nameplate MVA rating
-        voltage_primary: Primary winding voltage (kV)
-        voltage_secondary: Secondary winding voltage (kV)
-        impedance_percent: Nameplate impedance (%)
-        x_r_ratio: Reactance to resistance ratio
+        hv_bus_id: High-voltage side bus ID
+        lv_bus_id: Low-voltage side bus ID
+        rated_mva: Nameplate MVA rating
+        hv_kv: High-voltage winding voltage (kV)
+        lv_kv: Low-voltage winding voltage (kV)
+        impedance_percent: Nameplate impedance (%Z)
+        x_r_ratio: X/R ratio
+        vector_group: Winding connection (e.g., "Dyn11")
     
     Example:
         >>> xfmr = Transformer(
-        ...     id="TX-001",
+        ...     id="TX-1",
         ...     name="Main Transformer",
-        ...     rated_power_mva=2.0,
-        ...     voltage_primary=13.8,
-        ...     voltage_secondary=0.48,
+        ...     hv_bus_id="HV-BUS",
+        ...     lv_bus_id="LV-BUS",
+        ...     rated_mva=2.0,
+        ...     hv_kv=13.8,
+        ...     lv_kv=0.48,
         ...     impedance_percent=5.75,
         ...     x_r_ratio=8.0
         ... )
-        >>> print(f"Z = {xfmr.z_pu_on_own_base:.4f} pu")
-        Z = 0.0575 pu
+        >>> xfmr.vkr_percent  # Resistive component
+        0.713
     """
-    
-    model_config = ConfigDict(
-        frozen=False,
-        validate_assignment=True,
-        str_strip_whitespace=True,
-    )
+    model_config = ConfigDict(frozen=False, validate_assignment=True)
     
     # Identification
-    id: str = Field(..., description="Unique identifier", min_length=1)
-    name: str = Field(..., description="Human-readable name")
+    id: str = Field(
+        ..., 
+        min_length=1, 
+        description="Unique identifier"
+    )
+    name: str = Field(
+        ..., 
+        description="Human-readable name"
+    )
+    
+    # Connections
+    hv_bus_id: str = Field(
+        ..., 
+        description="High-voltage side bus ID"
+    )
+    lv_bus_id: str = Field(
+        ..., 
+        description="Low-voltage side bus ID"
+    )
     
     # Ratings
-    rated_power_mva: PositiveFloat = Field(
-        ...,
-        description="Nameplate power rating in MVA",
-        examples=[0.5, 1.0, 2.0, 2.5],
+    rated_mva: PositiveFloat = Field(
+        ..., 
+        description="Nameplate MVA rating"
     )
-    
-    voltage_primary: PositiveFloat = Field(
-        ...,
-        description="Primary winding rated voltage in kV",
-        examples=[13.8, 4.16, 34.5],
+    hv_kv: PositiveFloat = Field(
+        ..., 
+        description="High-voltage winding voltage (kV)"
     )
-    
-    voltage_secondary: PositiveFloat = Field(
-        ...,
-        description="Secondary winding rated voltage in kV",
-        examples=[0.48, 0.208, 4.16],
+    lv_kv: PositiveFloat = Field(
+        ..., 
+        description="Low-voltage winding voltage (kV)"
     )
     
     # Impedance
     impedance_percent: PositiveFloat = Field(
         ...,
-        description="Nameplate impedance in percent on transformer base",
-        examples=[5.75, 6.0, 7.5],
-        ge=1.0,   # Minimum realistic %Z
-        le=20.0,  # Maximum realistic %Z
+        ge=1.0,
+        le=20.0,
+        description="Nameplate impedance (%Z), typically 4-8% for distribution"
     )
-    
     x_r_ratio: PositiveFloat = Field(
         ...,
-        description="Reactance to resistance ratio (X/R)",
-        examples=[8.0, 10.0, 12.0],
         ge=1.0,
         le=50.0,
+        description="X/R ratio, typically 5-15 for power transformers"
     )
     
-    # Optional parameters
-    vector_group: Optional[VectorGroup] = Field(
-        default=VectorGroup.Dyn11,
-        description="Winding connection and phase shift",
+    # Vector group (winding connection)
+    vector_group: str = Field(
+        default="Dyn",
+        description="Winding connection (e.g., Dyn11, Yyn0, Dd0)"
     )
-    
-    tap_percent: float = Field(
-        default=0.0,
-        description="Tap position as percent deviation from nominal (e.g., +2.5, -2.5)",
-        ge=-10.0,
-        le=10.0,
-    )
-    
-    # System base for per-unit conversion
-    system_base_mva: PositiveFloat = Field(
-        default=100.0,
-        description="System base MVA for per-unit calculations",
-    )
-    
-    @field_validator('voltage_secondary')
-    @classmethod
-    def secondary_less_than_primary(cls, v: float, info) -> float:
-        """Secondary voltage should typically be less than or equal to primary."""
-        # Note: info.data contains previously validated fields
-        # This is a soft check - step-up transformers exist but are less common
-        return v
-    
-    # -------------------------------------------------------------------------
-    # Computed Properties - Impedance on Transformer Base
-    # -------------------------------------------------------------------------
     
     @computed_field
     @property
-    def z_pu_on_own_base(self) -> float:
-        """Per-unit impedance on transformer's own MVA base."""
-        return self.impedance_percent / 100.0
-    
-    @computed_field
-    @property
-    def r_pu_on_own_base(self) -> float:
-        """Per-unit resistance on transformer's own MVA base."""
-        return self.z_pu_on_own_base / math.sqrt(1 + self.x_r_ratio ** 2)
-    
-    @computed_field
-    @property
-    def x_pu_on_own_base(self) -> float:
-        """Per-unit reactance on transformer's own MVA base."""
-        return self.r_pu_on_own_base * self.x_r_ratio
-    
-    # -------------------------------------------------------------------------
-    # Computed Properties - Impedance on System Base
-    # -------------------------------------------------------------------------
-    
-    @computed_field
-    @property
-    def z_pu(self) -> float:
+    def vkr_percent(self) -> float:
         """
-        Per-unit impedance on system base.
+        Resistive component of short-circuit voltage.
         
-        Z_pu_new = Z_pu_old × (S_base_new / S_base_old)
+        PandaPower requires both vk_percent (total) and vkr_percent
+        (resistive component) to properly model the transformer.
+        
+        Calculation:
+            R/Z = 1 / sqrt(1 + (X/R)²)
+            vkr = vk × (R/Z)
+        
+        Returns:
+            Resistive component of impedance (%)
         """
-        return self.z_pu_on_own_base * (self.system_base_mva / self.rated_power_mva)
-    
-    @computed_field
-    @property
-    def r_pu(self) -> float:
-        """Per-unit resistance on system base."""
-        return self.r_pu_on_own_base * (self.system_base_mva / self.rated_power_mva)
-    
-    @computed_field
-    @property
-    def x_pu(self) -> float:
-        """Per-unit reactance on system base."""
-        return self.x_pu_on_own_base * (self.system_base_mva / self.rated_power_mva)
-    
-    # -------------------------------------------------------------------------
-    # Computed Properties - Impedance in Ohms (referred to secondary)
-    # -------------------------------------------------------------------------
-    
-    @computed_field
-    @property
-    def z_base_secondary_ohms(self) -> float:
-        """Base impedance in ohms at secondary voltage."""
-        return (self.voltage_secondary ** 2) / self.rated_power_mva
-    
-    @computed_field
-    @property
-    def z_ohms_secondary(self) -> float:
-        """Impedance magnitude in ohms referred to secondary."""
-        return self.z_pu_on_own_base * self.z_base_secondary_ohms
-    
-    @computed_field
-    @property
-    def r_ohms_secondary(self) -> float:
-        """Resistance in ohms referred to secondary."""
-        return self.r_pu_on_own_base * self.z_base_secondary_ohms
-    
-    @computed_field
-    @property
-    def x_ohms_secondary(self) -> float:
-        """Reactance in ohms referred to secondary."""
-        return self.x_pu_on_own_base * self.z_base_secondary_ohms
-    
-    # -------------------------------------------------------------------------
-    # Computed Properties - Other
-    # -------------------------------------------------------------------------
+        r_over_z = 1.0 / math.sqrt(1.0 + self.x_r_ratio ** 2)
+        return self.impedance_percent * r_over_z
     
     @computed_field
     @property
     def turns_ratio(self) -> float:
-        """Voltage transformation ratio (primary / secondary)."""
-        return self.voltage_primary / self.voltage_secondary
-    
-    @computed_field
-    @property
-    def rated_current_primary_a(self) -> float:
-        """Rated current on primary side in Amperes."""
-        return (self.rated_power_mva * 1000) / (math.sqrt(3) * self.voltage_primary)
-    
-    @computed_field
-    @property
-    def rated_current_secondary_a(self) -> float:
-        """Rated current on secondary side in Amperes."""
-        return (self.rated_power_mva * 1000) / (math.sqrt(3) * self.voltage_secondary)
-    
-    # -------------------------------------------------------------------------
-    # Methods
-    # -------------------------------------------------------------------------
-    
-    def get_impedance_complex_pu(self) -> complex:
-        """Get complex impedance in per-unit on system base."""
-        return complex(self.r_pu, self.x_pu)
-    
-    def get_impedance_complex_ohms(self, referred_to: str = "secondary") -> complex:
         """
-        Get complex impedance in ohms.
+        Transformer turns ratio (HV/LV).
         
-        Args:
-            referred_to: "primary" or "secondary"
+        Returns:
+            Ratio of HV to LV voltage
         """
-        if referred_to == "secondary":
-            return complex(self.r_ohms_secondary, self.x_ohms_secondary)
-        else:
-            # Refer to primary: multiply by turns_ratio²
-            factor = self.turns_ratio ** 2
-            return complex(self.r_ohms_secondary * factor, self.x_ohms_secondary * factor)
+        return self.hv_kv / self.lv_kv
     
     def __str__(self) -> str:
         return (
-            f"Transformer('{self.id}': {self.name}, "
-            f"{self.rated_power_mva} MVA, "
-            f"{self.voltage_primary}/{self.voltage_secondary} kV, "
-            f"Z={self.impedance_percent}%)"
+            f"Transformer({self.id}, {self.rated_mva} MVA, "
+            f"{self.hv_kv}/{self.lv_kv} kV)"
         )

@@ -2,117 +2,108 @@
 Cable Component
 ===============
 
-Power cable model for short-circuit studies.
+Power cable or busway connecting two buses.
 
-Cables add impedance to the system, limiting fault current. The impedance
-depends on conductor size, length, and installation method.
+Cables introduce impedance (resistance and reactance) between
+buses based on their length and per-unit-length parameters.
 
-Reference:
-    - IEEE 1584-2018, Section 6.2
-    - IEC 60909-0, Section 6
-    - NEC Chapter 9, Table 9
+References:
+    - NEC Chapter 9, Table 9: Conductor impedance
+    - IEEE 141 (Red Book): Cable impedance data
 
 Traceability:
-    - REQ-COMP-FUNC-4: Cable class definition
+    - REQ-COMP-FUNC-9: Cable with impedance parameters
+    - REQ-COMP-DATA-4: Cable lookup table from NEC Table 9
 """
 
-from __future__ import annotations
-
-import math
 from typing import Optional
 
-from pydantic import (
-    BaseModel,
-    Field,
-    PositiveFloat,
-    computed_field,
-    ConfigDict,
-)
+from pydantic import BaseModel, Field, PositiveFloat, computed_field, ConfigDict
 
 
 class Cable(BaseModel):
     """
-    Power cable connecting two buses.
+    Power cable or busway.
     
-    Models cable impedance for short-circuit calculations.
-    Impedance is specified per unit length and multiplied by total length.
+    A Cable connects two buses and introduces series impedance.
+    In PandaPower, this becomes a line element.
+    
+    Impedance Parameters:
+        - r_ohm_per_km: Resistance per kilometer
+        - x_ohm_per_km: Reactance per kilometer
+        - length_m: Cable length in meters
+    
+    These values can be specified directly or looked up from
+    the CABLE_DATA table using create_cable().
     
     Attributes:
         id: Unique identifier
         name: Human-readable name
+        from_bus_id: Source bus ID
+        to_bus_id: Destination bus ID
         length_m: Cable length in meters
-        r_per_km: Resistance per kilometer (Ω/km)
-        x_per_km: Reactance per kilometer (Ω/km)
-        voltage_nominal: Nominal voltage for per-unit calculations (kV)
+        r_ohm_per_km: Resistance (Ω/km)
+        x_ohm_per_km: Reactance (Ω/km)
+        ampacity_a: Optional continuous current rating (A)
+        conductor_size: Optional conductor size string
     
     Example:
         >>> cable = Cable(
-        ...     id="CBL-001",
-        ...     name="Feeder to Panel",
-        ...     length_m=30.0,
-        ...     r_per_km=0.125,
-        ...     x_per_km=0.093,
-        ...     voltage_nominal=0.48
+        ...     id="C1", name="Feeder",
+        ...     from_bus_id="B1", to_bus_id="B2",
+        ...     length_m=30,
+        ...     r_ohm_per_km=0.105,
+        ...     x_ohm_per_km=0.128
         ... )
-        >>> print(f"Z = {cable.z_ohms:.6f} Ω")
+        >>> cable.length_km
+        0.03
     """
-    
-    model_config = ConfigDict(
-        frozen=False,
-        validate_assignment=True,
-        str_strip_whitespace=True,
-    )
+    model_config = ConfigDict(frozen=False, validate_assignment=True)
     
     # Identification
-    id: str = Field(..., description="Unique identifier", min_length=1)
-    name: str = Field(..., description="Human-readable name")
+    id: str = Field(
+        ..., 
+        min_length=1, 
+        description="Unique identifier"
+    )
+    name: str = Field(
+        ..., 
+        description="Human-readable name"
+    )
+    
+    # Connections
+    from_bus_id: str = Field(
+        ..., 
+        description="Source bus ID"
+    )
+    to_bus_id: str = Field(
+        ..., 
+        description="Destination bus ID"
+    )
     
     # Physical parameters
     length_m: PositiveFloat = Field(
-        ...,
-        description="Cable length in meters",
-        examples=[10.0, 30.0, 100.0],
+        ..., 
+        description="Cable length in meters"
+    )
+    r_ohm_per_km: PositiveFloat = Field(
+        ..., 
+        description="Resistance per kilometer (Ω/km)"
+    )
+    x_ohm_per_km: PositiveFloat = Field(
+        ..., 
+        description="Reactance per kilometer (Ω/km)"
     )
     
-    # Impedance per unit length
-    r_per_km: PositiveFloat = Field(
-        ...,
-        description="Resistance per kilometer (Ω/km) at operating temperature",
-        examples=[0.125, 0.0754, 0.0473],
-    )
-    
-    x_per_km: PositiveFloat = Field(
-        ...,
-        description="Reactance per kilometer (Ω/km)",
-        examples=[0.093, 0.075, 0.066],
-    )
-    
-    # For per-unit calculations
-    voltage_nominal: PositiveFloat = Field(
-        ...,
-        description="Nominal voltage in kV (for per-unit conversion)",
-        examples=[0.48, 0.208, 4.16],
-    )
-    
-    system_base_mva: PositiveFloat = Field(
-        default=100.0,
-        description="System base MVA for per-unit calculations",
-    )
-    
-    # Optional
-    ampacity: Optional[PositiveFloat] = Field(
+    # Optional parameters
+    ampacity_a: Optional[PositiveFloat] = Field(
         default=None,
-        description="Continuous current rating in Amperes",
+        description="Continuous current rating (A)"
     )
-    
     conductor_size: Optional[str] = Field(
         default=None,
-        description="Conductor size (e.g., '500 kcmil', '4/0 AWG')",
+        description="Conductor size (e.g., '500 kcmil', '4/0 AWG')"
     )
-    
-    # -------------------------------------------------------------------------
-    # Computed Properties - Ohmic Values
-    # -------------------------------------------------------------------------
     
     @computed_field
     @property
@@ -123,83 +114,27 @@ class Cable(BaseModel):
     @computed_field
     @property
     def r_ohms(self) -> float:
-        """Total resistance in ohms."""
-        return self.r_per_km * self.length_km
+        """Total cable resistance in ohms."""
+        return self.r_ohm_per_km * self.length_km
     
     @computed_field
     @property
     def x_ohms(self) -> float:
-        """Total reactance in ohms."""
-        return self.x_per_km * self.length_km
-    
-    @computed_field
-    @property
-    def z_ohms(self) -> float:
-        """Total impedance magnitude in ohms."""
-        return math.sqrt(self.r_ohms ** 2 + self.x_ohms ** 2)
-    
-    @computed_field
-    @property
-    def x_r_ratio(self) -> float:
-        """Reactance to resistance ratio."""
-        if self.r_ohms == 0:
-            return float('inf')
-        return self.x_ohms / self.r_ohms
-    
-    # -------------------------------------------------------------------------
-    # Computed Properties - Per-Unit Values
-    # -------------------------------------------------------------------------
-    
-    @computed_field
-    @property
-    def z_base_ohms(self) -> float:
-        """Base impedance in ohms at nominal voltage."""
-        return (self.voltage_nominal ** 2) / self.system_base_mva
-    
-    @computed_field
-    @property
-    def r_pu(self) -> float:
-        """Per-unit resistance on system base."""
-        return self.r_ohms / self.z_base_ohms
-    
-    @computed_field
-    @property
-    def x_pu(self) -> float:
-        """Per-unit reactance on system base."""
-        return self.x_ohms / self.z_base_ohms
-    
-    @computed_field
-    @property
-    def z_pu(self) -> float:
-        """Per-unit impedance magnitude on system base."""
-        return self.z_ohms / self.z_base_ohms
-    
-    # -------------------------------------------------------------------------
-    # Methods
-    # -------------------------------------------------------------------------
-    
-    def get_impedance_complex_pu(self) -> complex:
-        """Get complex impedance in per-unit on system base."""
-        return complex(self.r_pu, self.x_pu)
-    
-    def get_impedance_complex_ohms(self) -> complex:
-        """Get complex impedance in ohms."""
-        return complex(self.r_ohms, self.x_ohms)
+        """Total cable reactance in ohms."""
+        return self.x_ohm_per_km * self.length_km
     
     def __str__(self) -> str:
-        return (
-            f"Cable('{self.id}': {self.name}, "
-            f"{self.length_m}m, Z={self.z_ohms:.6f}Ω)"
-        )
+        size = f", {self.conductor_size}" if self.conductor_size else ""
+        return f"Cable({self.id}, {self.length_m}m{size})"
 
 
 # =============================================================================
-# Common Cable Data (NEC Table 9 approximations)
+# Cable Lookup Table
 # =============================================================================
-# These are approximate values for copper conductors in steel conduit at 75°C
+# Source: NEC Chapter 9, Table 9 (Copper conductors in steel conduit at 75°C)
+# Format: (r_ohm_per_km, x_ohm_per_km, ampacity_a)
 
-COMMON_CABLE_DATA = {
-    # AWG/kcmil: (R Ω/km, X Ω/km, Ampacity A)
+CABLE_DATA: dict[str, tuple[float, float, float]] = {
     "14 AWG":    (10.17, 0.190, 15),
     "12 AWG":    (6.56,  0.177, 20),
     "10 AWG":    (3.94,  0.164, 30),
@@ -221,51 +156,63 @@ COMMON_CABLE_DATA = {
 }
 
 
-def create_cable_from_size(
+def create_cable(
     id: str,
     name: str,
-    conductor_size: str,
+    from_bus_id: str,
+    to_bus_id: str,
     length_m: float,
-    voltage_nominal: float,
-    system_base_mva: float = 100.0,
+    conductor_size: str,
 ) -> Cable:
     """
-    Create a cable using standard conductor size data.
+    Create a Cable using standard conductor data from NEC Table 9.
+    
+    This is a convenience function that looks up impedance values
+    from the CABLE_DATA table based on conductor size.
     
     Args:
         id: Unique identifier
         name: Human-readable name
-        conductor_size: Size from COMMON_CABLE_DATA (e.g., "500 kcmil")
-        length_m: Length in meters
-        voltage_nominal: Nominal voltage in kV
-        system_base_mva: System base MVA
+        from_bus_id: Source bus ID
+        to_bus_id: Destination bus ID
+        length_m: Cable length in meters
+        conductor_size: Size from CABLE_DATA (e.g., "500 kcmil", "4/0 AWG")
     
     Returns:
-        Cable instance with impedance data from lookup table
+        Cable instance with impedance from lookup table
+    
+    Raises:
+        ValueError: If conductor_size not found in CABLE_DATA
     
     Example:
-        >>> cable = create_cable_from_size(
-        ...     id="CBL-001",
-        ...     name="Main Feeder",
-        ...     conductor_size="500 kcmil",
-        ...     length_m=50.0,
-        ...     voltage_nominal=0.48
+        >>> cable = create_cable(
+        ...     id="C1", name="Feeder",
+        ...     from_bus_id="B1", to_bus_id="B2",
+        ...     length_m=30, conductor_size="500 kcmil"
         ... )
-    """
-    if conductor_size not in COMMON_CABLE_DATA:
-        available = ", ".join(COMMON_CABLE_DATA.keys())
-        raise ValueError(f"Unknown conductor size '{conductor_size}'. Available: {available}")
+        >>> cable.r_ohm_per_km
+        0.105
     
-    r_per_km, x_per_km, ampacity = COMMON_CABLE_DATA[conductor_size]
+    Reference:
+        NEC Chapter 9, Table 9
+    """
+    if conductor_size not in CABLE_DATA:
+        available = ", ".join(sorted(CABLE_DATA.keys()))
+        raise ValueError(
+            f"Unknown conductor size '{conductor_size}'. "
+            f"Available sizes: {available}"
+        )
+    
+    r, x, amp = CABLE_DATA[conductor_size]
     
     return Cable(
         id=id,
         name=name,
+        from_bus_id=from_bus_id,
+        to_bus_id=to_bus_id,
         length_m=length_m,
-        r_per_km=r_per_km,
-        x_per_km=x_per_km,
-        voltage_nominal=voltage_nominal,
-        system_base_mva=system_base_mva,
-        ampacity=ampacity,
+        r_ohm_per_km=r,
+        x_ohm_per_km=x,
+        ampacity_a=amp,
         conductor_size=conductor_size,
     )
