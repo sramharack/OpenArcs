@@ -7,6 +7,7 @@ __pycache__/
 
 # Local experiments / scratch work
 misc/
+v0_vibe_coding_failure
 
 # Virtual environments
 .venv/
