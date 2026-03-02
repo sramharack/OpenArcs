@@ -154,7 +154,7 @@ TABLE_2_VARIATION: Dict[ElectrodeConfig, Dict[str, float]] = {
 # Used by Equations (3), (6), (7), (10)
 
 TABLE_3_ENERGY_600V: Dict[ElectrodeConfig, Dict[str, float]] = {
-    # TODO: Validate coefficients against IEEE 1584-2018 Table 3
+    # DONE (01/03/2026): Validate coefficients against IEEE 1584-2018 Table 3
     ElectrodeConfig.VCB: {
         "k1": 0.753364, "k2": 0.566, "k3": 1.752636,
         "k4": 0, "k5": 0, "k6": -4.783e-9,
@@ -194,7 +194,7 @@ TABLE_3_ENERGY_600V: Dict[ElectrodeConfig, Dict[str, float]] = {
 # Used by Equations (4), (8)
 
 TABLE_4_ENERGY_2700V: Dict[ElectrodeConfig, Dict[str, float]] = {
-    # TODO: Validate coefficients against IEEE 1584-2018 Table 4
+    # DONE (01/03/2026): Validate coefficients against IEEE 1584-2018 Table 4
     ElectrodeConfig.VCB: {
         "k1": 2.40021, "k2": 0.165, "k3": 0.354202,
         "k4": -1.557e-12, "k5": 4.556e-10, "k6": -4.186e-8,
@@ -234,7 +234,7 @@ TABLE_4_ENERGY_2700V: Dict[ElectrodeConfig, Dict[str, float]] = {
 # Used by Equations (5), (9)
 
 TABLE_5_ENERGY_14300V: Dict[ElectrodeConfig, Dict[str, float]] = {
-    # TODO: Validate coefficients against IEEE 1584-2018 Table 5
+    # DONE (01/03/2026): Validate coefficients against IEEE 1584-2018 Table 5
     ElectrodeConfig.VCB: {
         "k1": 3.825917, "k2": 0.11, "k3": -0.999749,
         "k4": -1.557e-12, "k5": 4.556e-10, "k6": -4.186e-8,

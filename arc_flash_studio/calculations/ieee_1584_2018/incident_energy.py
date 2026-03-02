@@ -65,11 +65,11 @@ def _build_energy_exponent(
     
     exponent = k["k1"]
     exponent += k["k2"] * math.log10(gap_mm)
-    exponent += k["k3"] * math.log10(iarc_ref_ka)
     
     # Polynomial f(Ibf)
     # TODO: Verify polynomial structure - powers 7,6,5,4,3,2,1 vs 6,5,4,3,2,1,0
     f_ibf = (
+        k["k3"] * math.log10(iarc_ref_ka) +
         k["k4"] * ibf_ka**7 +
         k["k5"] * ibf_ka**6 +
         k["k6"] * ibf_ka**5 +
